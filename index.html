@@ -1,131 +1,45 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Secure Chat Final</title>
     <script src="https://telegram.org"></script>
     <style>
-        body { font-family: -apple-system, sans-serif; padding: 20px; background: #fff; color: #000; text-align: center; }
-        .card { background: #f4f4f7; padding: 20px; border-radius: 16px; margin-bottom: 15px; border: 1px solid #e0e0e0; }
-        button { width: 100%; padding: 16px; background: #0088cc; color: white; border: none; border-radius: 12px; margin-top: 10px; font-weight: bold; cursor: pointer; font-size: 15px; }
-        button:disabled { background: #b0b0b0; opacity: 0.6; }
-        input { width: 100%; padding: 12px; margin-top: 10px; border-radius: 10px; border: 1px solid #ccc; box-sizing: border-box; font-size: 14px; }
-        #status { font-weight: bold; margin-bottom: 15px; font-size: 13px; color: #888; }
-        .test-btn { background: #ff3b30; margin-top: 20px; font-size: 12px; }
-        .reset-link { color: #ff3b30; font-size: 11px; margin-top: 30px; display: block; text-decoration: none; }
+        body { font-family: sans-serif; text-align: center; padding-top: 50px; background: #fff; }
+        button { width: 80%; padding: 20px; margin: 10px; border-radius: 15px; border: none; color: white; font-weight: bold; }
+        .blue { background: #0088cc; }
+        .red { background: #ff3b30; }
     </style>
 </head>
 <body>
 
-    <div id="status">⏳ Загрузка системы шифрования...</div>
+    <h2 id="user">Загрузка...</h2>
 
-    <div class="card">
-        <h3>1. Передать ключ</h3>
-        <button id="btn1" onclick="sendMyKey()" disabled>📤 ОТПРАВИТЬ МОЙ КЛЮЧ В ЧАТ</button>
-    </div>
+    <!-- КНОПКА 1: Простая отправка ключа -->
+    <button class="blue" onclick="sendKey()">1. ОТПРАВИТЬ КЛЮЧ</button>
 
-    <div class="card">
-        <h3>2. Подключить друга</h3>
-        <input type="text" id="pInput" placeholder="Вставь сюда ключ из чата...">
-        <button id="btn2" style="background: #34c759;" onclick="connectPartner()" disabled>🔗 ПОДКЛЮЧИТЬ</button>
-    </div>
-
-    <div class="card" id="secretBox" style="display:none;">
-        <h3>3. Секретная связь</h3>
-        <button style="background: #5856d6;" onclick="sendSecret()">🔐 ОТПРАВИТЬ ШИФРОВКУ</button>
-    </div>
-
-    <!-- ТА САМАЯ КРАСНАЯ КНОПКА ДЛЯ ПРОВЕРКИ -->
-    <button class="test-btn" onclick="window.Telegram.WebApp.sendData('СВЯЗЬ_РАБОТАЕТ')">🔴 ТЕСТ СВЯЗИ (ПРОСТО ПРОВЕРИТЬ)</button>
-
-    <a href="#" class="reset-link" onclick="hardReset()">Сбросить всё (очистка памяти)</a>
+    <!-- КНОПКА 2: Тест связи (максимально простой) -->
+    <button class="red" onclick="testData()">🔴 ТЕСТ СВЯЗИ</button>
 
 <script>
     const tg = window.Telegram.WebApp;
+    
+    // Сообщаем Telegram, что приложение готово
+    tg.ready();
     tg.expand();
 
-    let myKeys = null;
-    let sharedKey = null;
+    // Выводим имя пользователя для проверки, что API работает
+    const user = tg.initDataUnsafe?.user?.first_name || "Пользователь";
+    document.getElementById('user').innerText = "Привет, " + user;
 
-    // ЗАПУСК ШИФРОВАНИЯ
-    async function startCrypto() {
-        try {
-            const keyName = 'p2p_v5_storage';
-            const saved = localStorage.getItem(keyName);
-            
-            if (saved) {
-                const data = JSON.parse(saved);
-                myKeys = {
-                    publicKey: await crypto.subtle.importKey("jwk", data.pub, {name: "ECDH", namedCurve: "P-256"}, true, []),
-                    privateKey: await crypto.subtle.importKey("jwk", data.priv, {name: "ECDH", namedCurve: "P-256"}, true, ["deriveKey"])
-                };
-            } else {
-                myKeys = await crypto.subtle.generateKey({name: "ECDH", namedCurve: "P-256"}, true, ["deriveKey"]);
-                const pub = await crypto.subtle.exportKey("jwk", myKeys.publicKey);
-                const priv = await crypto.subtle.exportKey("jwk", myKeys.privateKey);
-                localStorage.setItem(keyName, JSON.stringify({pub, priv}));
-            }
-
-            document.getElementById('btn1').disabled = false;
-            document.getElementById('btn2').disabled = false;
-            document.getElementById('status').innerText = "✅ СИСТЕМА ГОТОВА";
-            document.getElementById('status').style.color = "#34c759";
-        } catch (e) {
-            document.getElementById('status').innerText = "❌ ОШИБКА: " + e.message;
-            document.getElementById('status').style.color = "#ff3b30";
-        }
+    function sendKey() {
+        // Пробуем отправить фиксированную строку
+        tg.sendData("KEY_TEST_123");
     }
 
-    async function sendMyKey() {
-        try {
-            const raw = await crypto.subtle.exportKey("raw", myKeys.publicKey);
-            const b64 = btoa(String.fromCharCode(...new Uint8Array(raw)));
-            tg.sendData("PUB_KEY:" + b64);
-        } catch (e) { alert("Ошибка Шага 1: " + e.message); }
+    function testData() {
+        // Самый примитивный метод
+        window.Telegram.WebApp.sendData("HELLO_TG");
     }
-
-    async function connectPartner() {
-        try {
-            let val = document.getElementById('pInput').value.trim();
-            if (val.includes(":")) val = val.split(":")[1]; 
-            
-            const bytes = new Uint8Array(atob(val).split("").map(c => c.charCodeAt(0)));
-            const partnerKey = await crypto.subtle.importKey("raw", bytes, {name: "ECDH", namedCurve: "P-256"}, true, []);
-            
-            sharedKey = await crypto.subtle.deriveKey(
-                {name: "ECDH", public: partnerKey},
-                myKeys.privateKey,
-                {name: "AES-GCM", length: 256},
-                true, ["encrypt", "decrypt"]
-            );
-
-            document.getElementById('secretBox').style.display = "block";
-            document.getElementById('status').innerText = "🔒 КАНАЛ ЗАШИФРОВАН";
-            alert("Связь установлена! Теперь Шаг 3 доступен.");
-        } catch (e) { alert("Ошибка ключа партнера: " + e.message); }
-    }
-
-    async function sendSecret() {
-        try {
-            const iv = crypto.getRandomValues(new Uint8Array(12));
-            const msg = "ПОДТВЕРЖДЕНИЕ_СВЯЗИ_ПРОЙДЕНО";
-            const enc = await crypto.subtle.encrypt({name: "AES-GCM", iv}, sharedKey, new TextEncoder().encode(msg));
-            
-            const result = {
-                iv: btoa(String.fromCharCode(...iv)),
-                data: btoa(String.fromCharCode(...new Uint8Array(enc)))
-            };
-            tg.sendData("MSG:" + JSON.stringify(result));
-        } catch (e) { alert("Ошибка шифрования: " + e.message); }
-    }
-
-    function hardReset() {
-        localStorage.clear();
-        location.reload();
-    }
-
-    window.onload = startCrypto;
 </script>
 </body>
 </html>
