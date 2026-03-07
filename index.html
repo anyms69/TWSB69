@@ -3,40 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Secure Chat V4</title>
+    <title>Secure Chat Final</title>
     <script src="https://telegram.org"></script>
     <style>
-        body { font-family: sans-serif; padding: 20px; background: #fff; color: #000; text-align: center; }
-        .card { background: #f9f9f9; padding: 20px; border-radius: 15px; margin-bottom: 15px; border: 1px solid #eee; }
-        button { width: 100%; padding: 15px; background: #0088cc; color: white; border: none; border-radius: 12px; margin-top: 10px; font-weight: bold; cursor: pointer; font-size: 16px; }
-        button:disabled { background: #ccc; cursor: not-allowed; }
-        input { width: 100%; padding: 12px; margin-top: 10px; border-radius: 10px; border: 1px solid #ddd; box-sizing: border-box; }
-        #status { font-weight: bold; margin-bottom: 15px; font-size: 14px; color: orange; }
-        .reset-btn { background: none; color: #ff4d4d; border: 1px solid #ff4d4d; font-size: 12px; padding: 5px; margin-top: 20px; }
+        body { font-family: -apple-system, sans-serif; padding: 20px; background: #fff; color: #000; text-align: center; }
+        .card { background: #f4f4f7; padding: 20px; border-radius: 16px; margin-bottom: 15px; border: 1px solid #e0e0e0; }
+        button { width: 100%; padding: 16px; background: #0088cc; color: white; border: none; border-radius: 12px; margin-top: 10px; font-weight: bold; cursor: pointer; font-size: 15px; }
+        button:disabled { background: #b0b0b0; opacity: 0.6; }
+        input { width: 100%; padding: 12px; margin-top: 10px; border-radius: 10px; border: 1px solid #ccc; box-sizing: border-box; font-size: 14px; }
+        #status { font-weight: bold; margin-bottom: 15px; font-size: 13px; color: #888; }
+        .test-btn { background: #ff3b30; margin-top: 20px; font-size: 12px; }
+        .reset-link { color: #ff3b30; font-size: 11px; margin-top: 30px; display: block; text-decoration: none; }
     </style>
 </head>
 <body>
 
-    <div id="status">⏳ Инициализация защиты...</div>
+    <div id="status">⏳ Загрузка системы шифрования...</div>
 
     <div class="card">
-        <h3>Шаг 1</h3>
-        <button id="keyBtn" onclick="sendMyKey()" disabled>🔑 ОТПРАВИТЬ МОЙ КЛЮЧ</button>
-        <p style="font-size: 11px; color: #666;">Нажми, чтобы бот переслал твой ключ другу</p>
+        <h3>1. Передать ключ</h3>
+        <button id="btn1" onclick="sendMyKey()" disabled>📤 ОТПРАВИТЬ МОЙ КЛЮЧ В ЧАТ</button>
     </div>
 
     <div class="card">
-        <h3>Шаг 2</h3>
-        <input type="text" id="partnerInput" placeholder="Вставь ключ друга сюда...">
-        <button id="connBtn" style="background: #28a745;" onclick="acceptPartnerKey()" disabled>✔ ПОДКЛЮЧИТЬ ДРУГА</button>
+        <h3>2. Подключить друга</h3>
+        <input type="text" id="pInput" placeholder="Вставь сюда ключ из чата...">
+        <button id="btn2" style="background: #34c759;" onclick="connectPartner()" disabled>🔗 ПОДКЛЮЧИТЬ</button>
     </div>
 
-    <div class="card" id="chatSection" style="display:none;">
-        <h3>Шаг 3</h3>
-        <button style="background: #6f42c1;" onclick="sendSecret()">🚀 ОТПРАВИТЬ СЕКРЕТ</button>
+    <div class="card" id="secretBox" style="display:none;">
+        <h3>3. Секретная связь</h3>
+        <button style="background: #5856d6;" onclick="sendSecret()">🔐 ОТПРАВИТЬ ШИФРОВКУ</button>
     </div>
 
-    <button class="reset-btn" onclick="hardReset()">СБРОСИТЬ ВСЕ КЛЮЧИ</button>
+    <!-- ТА САМАЯ КРАСНАЯ КНОПКА ДЛЯ ПРОВЕРКИ -->
+    <button class="test-btn" onclick="window.Telegram.WebApp.sendData('СВЯЗЬ_РАБОТАЕТ')">🔴 ТЕСТ СВЯЗИ (ПРОСТО ПРОВЕРИТЬ)</button>
+
+    <a href="#" class="reset-link" onclick="hardReset()">Сбросить всё (очистка памяти)</a>
 
 <script>
     const tg = window.Telegram.WebApp;
@@ -45,78 +48,68 @@
     let myKeys = null;
     let sharedKey = null;
 
-    // ГЕНЕРАЦИЯ КЛЮЧЕЙ ПРИ ЗАПУСКЕ
-    async function initCrypto() {
+    // ЗАПУСК ШИФРОВАНИЯ
+    async function startCrypto() {
         try {
-            const storageKey = 'secure_v4_store';
-            const stored = localStorage.getItem(storageKey);
+            const keyName = 'p2p_v5_storage';
+            const saved = localStorage.getItem(keyName);
             
-            if (stored) {
-                const raw = JSON.parse(stored);
+            if (saved) {
+                const data = JSON.parse(saved);
                 myKeys = {
-                    publicKey: await crypto.subtle.importKey("jwk", raw.pub, {name: "ECDH", namedCurve: "P-256"}, true, []),
-                    privateKey: await crypto.subtle.importKey("jwk", raw.priv, {name: "ECDH", namedCurve: "P-256"}, true, ["deriveKey"])
+                    publicKey: await crypto.subtle.importKey("jwk", data.pub, {name: "ECDH", namedCurve: "P-256"}, true, []),
+                    privateKey: await crypto.subtle.importKey("jwk", data.priv, {name: "ECDH", namedCurve: "P-256"}, true, ["deriveKey"])
                 };
             } else {
                 myKeys = await crypto.subtle.generateKey({name: "ECDH", namedCurve: "P-256"}, true, ["deriveKey"]);
                 const pub = await crypto.subtle.exportKey("jwk", myKeys.publicKey);
                 const priv = await crypto.subtle.exportKey("jwk", myKeys.privateKey);
-                localStorage.setItem(storageKey, JSON.stringify({pub, priv}));
+                localStorage.setItem(keyName, JSON.stringify({pub, priv}));
             }
 
-            // Активируем кнопки
-            document.getElementById('keyBtn').disabled = false;
-            document.getElementById('connBtn').disabled = false;
-            document.getElementById('status').innerText = "✅ ЗАЩИТА ГОТОВА";
-            document.getElementById('status').style.color = "green";
-            
+            document.getElementById('btn1').disabled = false;
+            document.getElementById('btn2').disabled = false;
+            document.getElementById('status').innerText = "✅ СИСТЕМА ГОТОВА";
+            document.getElementById('status').style.color = "#34c759";
         } catch (e) {
-            document.getElementById('status').innerText = "❌ КРИТИЧЕСКАЯ ОШИБКА: " + e.message;
-            document.getElementById('status').style.color = "red";
+            document.getElementById('status').innerText = "❌ ОШИБКА: " + e.message;
+            document.getElementById('status').style.color = "#ff3b30";
         }
     }
 
-    // ОТПРАВКА СВОЕГО ПУБЛИЧНОГО КЛЮЧА
     async function sendMyKey() {
-        if (!myKeys) return;
         try {
-            const pubRaw = await crypto.subtle.exportKey("raw", myKeys.publicKey);
-            const b64 = btoa(String.fromCharCode(...new Uint8Array(pubRaw)));
+            const raw = await crypto.subtle.exportKey("raw", myKeys.publicKey);
+            const b64 = btoa(String.fromCharCode(...new Uint8Array(raw)));
             tg.sendData("PUB_KEY:" + b64);
-        } catch (e) { alert("Ошибка: " + e.message); }
+        } catch (e) { alert("Ошибка Шага 1: " + e.message); }
     }
 
-    // ПРИНЯТИЕ КЛЮЧА ОТ ПАРТНЕРА
-    async function acceptPartnerKey() {
+    async function connectPartner() {
         try {
-            let val = document.getElementById('partnerInput').value.trim();
-            if (val.includes(":")) val = val.split(":")[1]; // Убираем PUB_KEY: если есть
+            let val = document.getElementById('pInput').value.trim();
+            if (val.includes(":")) val = val.split(":")[1]; 
             
-            const binary = atob(val);
-            const bytes = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-
-            const partnerPub = await crypto.subtle.importKey("raw", bytes, {name: "ECDH", namedCurve: "P-256"}, true, []);
+            const bytes = new Uint8Array(atob(val).split("").map(c => c.charCodeAt(0)));
+            const partnerKey = await crypto.subtle.importKey("raw", bytes, {name: "ECDH", namedCurve: "P-256"}, true, []);
             
             sharedKey = await crypto.subtle.deriveKey(
-                {name: "ECDH", public: partnerPub},
+                {name: "ECDH", public: partnerKey},
                 myKeys.privateKey,
                 {name: "AES-GCM", length: 256},
                 true, ["encrypt", "decrypt"]
             );
 
-            document.getElementById('chatSection').style.display = "block";
-            document.getElementById('status').innerText = "🔒 СОЕДИНЕНИЕ ЗАШИФРОВАНО";
-            alert("Успех! Теперь Шаг 3 разблокирован.");
-        } catch (e) { alert("Неверный формат ключа: " + e.message); }
+            document.getElementById('secretBox').style.display = "block";
+            document.getElementById('status').innerText = "🔒 КАНАЛ ЗАШИФРОВАН";
+            alert("Связь установлена! Теперь Шаг 3 доступен.");
+        } catch (e) { alert("Ошибка ключа партнера: " + e.message); }
     }
 
-    // ТЕСТОВАЯ ОТПРАВКА ШИФРОВАННОГО СООБЩЕНИЯ
     async function sendSecret() {
-        if (!sharedKey) return;
         try {
             const iv = crypto.getRandomValues(new Uint8Array(12));
-            const msg = "СЕКРЕТНОЕ ПОСЛАНИЕ ОТ ПАРТНЕРА";
+            const msg = "ПОДТВЕРЖДЕНИЕ_СВЯЗИ_ПРОЙДЕНО";
             const enc = await crypto.subtle.encrypt({name: "AES-GCM", iv}, sharedKey, new TextEncoder().encode(msg));
             
             const result = {
@@ -128,14 +121,11 @@
     }
 
     function hardReset() {
-        if(confirm("Это удалит ключи и связь. Продолжить?")) {
-            localStorage.clear();
-            location.reload();
-        }
+        localStorage.clear();
+        location.reload();
     }
 
-    // Запуск процесса при загрузке страницы
-    window.onload = initCrypto;
+    window.onload = startCrypto;
 </script>
 </body>
 </html>
