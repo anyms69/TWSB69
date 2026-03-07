@@ -1,0 +1,103 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure P2P Chat</title>
+    <script src="https://telegram.org"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #f0f2f5; color: #1c1e21; }
+        .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 10px; }
+        textarea, input { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background: #0088cc; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        button.secondary { background: #6c757d; margin-top: 5px; }
+        .status { font-size: 0.8em; color: green; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h3>🔐 Личный шифратор</h3>
+    <div id="status" class="status">Ключи готовы</div>
+    
+    <label>Публичный ключ собеседника:</label>
+    <input type="text" id="partnerPubKey" placeholder="Вставьте ключ партнера для связи...">
+    <button class="secondary" onclick="savePartnerKey()">✔ Принять ключ партнера</button>
+</div>
+
+<div class="card">
+    <textarea id="msgInput" rows="3" placeholder="Ваше секретное сообщение..."></textarea>
+    <button onclick="sendEncrypted()">🚀 Отправить зашифрованным</button>
+    <button class="secondary" onclick="sendMyPublicKey()">🔑 Обменяться ключами</button>
+</div>
+
+<script>
+    const tg = window.Telegram.WebApp;
+    tg.expand();
+
+    let myKeys;
+    let sharedKey = null;
+
+    // 1. Генерация или загрузка ключей при старте
+    async function init() {
+        const stored = localStorage.getItem('my_keys');
+        if (stored) {
+            const raw = JSON.parse(stored);
+            myKeys = {
+                publicKey: await crypto.subtle.importKey("jwk", raw.pub, {name: "ECDH", namedCurve: "P-256"}, true, []),
+                privateKey: await crypto.subtle.importKey("jwk", raw.priv, {name: "ECDH", namedCurve: "P-256"}, true, ["deriveKey"])
+            };
+        } else {
+            myKeys = await crypto.subtle.generateKey({name: "ECDH", namedCurve: "P-256"}, true, ["deriveKey"]);
+            const pub = await crypto.subtle.exportKey("jwk", myKeys.publicKey);
+            const priv = await crypto.subtle.exportKey("jwk", myKeys.privateKey);
+            localStorage.setItem('my_keys', JSON.stringify({pub, priv}));
+        }
+    }
+
+    // 2. Отправка своего публичного ключа через бота
+    async function sendMyPublicKey() {
+        const pubExport = await crypto.subtle.exportKey("raw", myKeys.publicKey);
+        const base64Pub = btoa(String.fromCharCode(...new Uint8Array(pubExport)));
+        tg.sendData("PUB_KEY:" + base64Pub);
+    }
+
+    // 3. Создание общего секрета на основе ключа партнера
+    async function savePartnerKey() {
+        try {
+            const b64 = document.getElementById('partnerPubKey').value;
+            const rawPub = new Uint8Array(atob(b64).split("").map(c => c.charCodeAt(0)));
+            const partnerPublicKey = await crypto.subtle.importKey("raw", rawPub, {name: "ECDH", namedCurve: "P-256"}, true, []);
+            
+            sharedKey = await crypto.subtle.deriveKey(
+                {name: "ECDH", public: partnerPublicKey},
+                myKeys.privateKey,
+                {name: "AES-GCM", length: 256},
+                true,
+                ["encrypt", "decrypt"]
+            );
+            document.getElementById('status').innerText = "✅ Связь защищена!";
+        } catch (e) { alert("Ошибка ключа!"); }
+    }
+
+    // 4. Шифрование и отправка сообщения
+    async function sendEncrypted() {
+        if (!sharedKey) return alert("Сначала обменяйтесь ключами!");
+        const text = document.getElementById('msgInput').value;
+        const enc = new TextEncoder();
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const ciphertext = await crypto.subtle.encrypt({name: "AES-GCM", iv}, sharedKey, enc.encode(text));
+        
+        const result = {
+            iv: btoa(String.fromCharCode(...iv)),
+            data: btoa(String.fromCharCode(...new Uint8Array(ciphertext)))
+        };
+        tg.sendData("MSG:" + JSON.stringify(result));
+        document.getElementById('msgInput').value = "";
+    }
+
+    init();
+</script>
+</body>
+</html>
